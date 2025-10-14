@@ -12,4 +12,4 @@ ansible-playbook main.yml
 
 Open http://YOUR_SERVER_IP:30081
 
-Replace `YOUR_SERVER_IP` with your Kubernetes node IP address.
+Replace `YOUR_SERVER_IP` with your Kubernetes node IP address. 
