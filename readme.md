@@ -10,8 +10,6 @@ ansible-playbook main.yml
 
 ## Access AWX
 
-```bash
-kubectl port-forward svc/awx-demo-service 8080:80 -n awx
-```
+Open http://YOUR_SERVER_IP:30081
 
-Open http://localhost:8080
+Replace `YOUR_SERVER_IP` with your Kubernetes node IP address.
