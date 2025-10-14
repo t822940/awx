@@ -1,0 +1,9 @@
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  namespace: awx
+  name: awx
+spec:
+  service_type: NodePort
+  nodeport_port: 30081

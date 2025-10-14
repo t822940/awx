@@ -1,0 +1,33 @@
+# deploy-awx.yml
+---
+- hosts: localhost
+  gather_facts: false
+  vars:
+    repo_url: "https://github.com/ansible/awx-operator.git"
+    repo_version: "2.19.1"          # or "main"
+    workdir: "./awx-operator"
+    ns: "awx"
+
+  tasks:
+    - name: Clone awx-operator
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ workdir }}"
+        version: "{{ repo_version }}"
+        force: true
+        update: true
+
+    - name: Deploy operator (make)
+      ansible.builtin.command: make deploy
+      args: { chdir: "{{ workdir }}" }
+      register: make_deploy
+      ignore_errors: true
+
+    - name: Fallback deploy (kubectl -k) if make failed
+      when: make_deploy is failed
+      ansible.builtin.command: kubectl apply -k config/default
+      args: { chdir: "{{ workdir }}" }
+
+    - name: Apply AWX CR
+      ansible.builtin.command: kubectl apply -f ../awx.yml
+      args: { chdir: "{{ workdir }}" }

@@ -1,0 +1,16 @@
+---
+- name: Install requirements and deploy AWX
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Install collections
+      ansible.builtin.command: ansible-galaxy collection install -r requirements.yml --force
+
+    - name: Wait for Terraform state file
+      ansible.builtin.wait_for:
+        path: "../terraform/terraform.tfstate"
+        timeout: 1800
+
+    - name: Deploy AWX
+      ansible.builtin.import_playbook: deploy-awx.yml
