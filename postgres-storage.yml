@@ -16,7 +16,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: postgres-pvc
+  name: postgres-15-awx-postgres-15-0
   namespace: awx
 spec:
   accessModes:

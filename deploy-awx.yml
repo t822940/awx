@@ -9,6 +9,11 @@
     ns: "awx"
 
   tasks:
+    - name: Create AWX namespace
+      ansible.builtin.command: kubectl create namespace {{ ns }}
+      register: ns_create
+      failed_when: false
+
     - name: Clone awx-operator
       ansible.builtin.git:
         repo: "{{ repo_url }}"
@@ -62,16 +67,8 @@
       when: not deployment_success
 
     - name: Wait for AWX operator to be ready
-      ansible.builtin.command: kubectl get deployment awx-operator-controller-manager -n awx-operator-system
-      register: operator_check
-      retries: 10
-      delay: 10
-      until: operator_check.rc == 0
-      failed_when: false
-
-    - name: Create AWX namespace
-      ansible.builtin.command: kubectl create namespace {{ ns }}
-      register: ns_create
+      ansible.builtin.command: kubectl wait --for=condition=available --timeout=300s deployment/awx-operator-controller-manager -n awx-operator-system
+      register: operator_wait
       failed_when: false
 
     - name: Create postgres data directory
@@ -91,28 +88,26 @@
       args: { chdir: "{{ workdir }}" }
       register: postgres_storage_result
 
-    - name: Apply PostgreSQL secret
+    - name: Apply PostgreSQL configuration secret
       ansible.builtin.command: kubectl apply -f ../postgres-secret.yml
       args: { chdir: "{{ workdir }}" }
       register: postgres_secret_result
-
-    - name: Apply PostgreSQL deployment
-      ansible.builtin.command: kubectl apply -f ../postgres.yml
-      args: { chdir: "{{ workdir }}" }
-      register: postgres_result
-
-    - name: Wait for PostgreSQL to be ready
-      ansible.builtin.command: kubectl wait --for=condition=available --timeout=300s deployment/awx-postgres -n {{ ns }}
-      register: postgres_wait
-      failed_when: false
 
     - name: Apply AWX CR
       ansible.builtin.command: kubectl apply -f ../awx.yml
       args: { chdir: "{{ workdir }}" }
       register: awx_cr_result
 
+    - name: Wait for AWX deployment to be ready
+      ansible.builtin.command: kubectl wait --for=condition=Ready --timeout=600s awx/awx -n {{ ns }}
+      register: awx_wait
+      failed_when: false
+
     - name: Display deployment results
       debug:
         msg:
-          - "PostgreSQL deployment: {{ postgres_result.stdout_lines }}"
+          - "Storage setup: {{ storage_class_result.stdout_lines }}"
+          - "PostgreSQL storage: {{ postgres_storage_result.stdout_lines }}"
+          - "PostgreSQL secret: {{ postgres_secret_result.stdout_lines }}"
           - "AWX CR application: {{ awx_cr_result.stdout_lines }}"
+          - "AWX deployment status: {{ 'Ready' if awx_wait.rc == 0 else 'Still deploying - check kubectl get awx -n awx' }}"
