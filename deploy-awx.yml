@@ -78,6 +78,16 @@
         mode: '0777'
         owner: 70
         group: 70
+        recurse: yes
+      become: yes
+
+    - name: Create data subdirectory for PostgreSQL
+      ansible.builtin.file:
+        path: /opt/awx-postgres-data/data
+        state: directory
+        mode: '0777'
+        owner: 70
+        group: 70
       become: yes
 
     - name: Check if PV exists and is released
