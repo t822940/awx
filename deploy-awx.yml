@@ -75,7 +75,7 @@
       ansible.builtin.file:
         path: /opt/awx-postgres-data
         state: directory
-        mode: '0777'
+        mode: '0755'
         owner: 70
         group: 70
         recurse: yes
@@ -85,10 +85,24 @@
       ansible.builtin.file:
         path: /opt/awx-postgres-data/data
         state: directory
-        mode: '0777'
+        mode: '0755'
         owner: 70
         group: 70
       become: yes
+
+    - name: Create userdata subdirectory for PostgreSQL
+      ansible.builtin.file:
+        path: /opt/awx-postgres-data/data/userdata
+        state: directory
+        mode: '0700'
+        owner: 70
+        group: 70
+      become: yes
+
+    - name: Set SELinux context for PostgreSQL data (if SELinux is enabled)
+      ansible.builtin.command: chcon -R -t container_file_t /opt/awx-postgres-data
+      become: yes
+      failed_when: false
 
     - name: Check if PV exists and is released
       ansible.builtin.command: kubectl get pv awx-postgres-pv -o jsonpath='{.status.phase}'
