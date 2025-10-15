@@ -71,11 +71,13 @@
       register: operator_wait
       failed_when: false
 
-    - name: Create postgres data directory
+    - name: Create postgres data directory with correct permissions
       ansible.builtin.file:
         path: /opt/awx-postgres-data
         state: directory
-        mode: '0755'
+        mode: '0777'
+        owner: 70
+        group: 70
       become: yes
 
     - name: Apply StorageClass
