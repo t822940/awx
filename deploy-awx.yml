@@ -111,6 +111,15 @@
       args: { chdir: "{{ workdir }}" }
       register: postgres_storage_result
 
+    - name: Check if PostgreSQL service exists
+      ansible.builtin.command: kubectl get svc -n awx
+      register: postgres_svc_check
+      failed_when: false
+
+    - name: Display PostgreSQL services for debugging
+      debug:
+        msg: "PostgreSQL services: {{ postgres_svc_check.stdout_lines }}"
+
     - name: Apply PostgreSQL configuration secret
       ansible.builtin.command: kubectl apply -f ../postgres-secret.yml
       args: { chdir: "{{ workdir }}" }

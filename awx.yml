@@ -7,4 +7,7 @@ metadata:
 spec:
   service_type: NodePort
   nodeport_port: 30081
-  postgres_configuration_secret: awx-postgres-configuration
+  postgres_storage_class: local-storage
+  postgres_storage_requirements:
+    requests:
+      storage: 8Gi
