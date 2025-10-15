@@ -17,17 +17,102 @@
         force: true
         update: true
 
+    - name: Check if make is available
+      ansible.builtin.command: which make
+      register: make_check
+      failed_when: false
+      changed_when: false
+
     - name: Deploy operator (make)
       ansible.builtin.command: make deploy
       args: { chdir: "{{ workdir }}" }
       register: make_deploy
-      ignore_errors: true
+      when: make_check.rc == 0
+      failed_when: false
 
-    - name: Fallback deploy (kubectl -k) if make failed
-      when: make_deploy is failed
+    - name: Deploy operator (kubectl -k) - primary method when make unavailable
       ansible.builtin.command: kubectl apply -k config/default
       args: { chdir: "{{ workdir }}" }
+      register: kubectl_deploy
+      when: make_check.rc != 0
+
+    - name: Fallback deploy (kubectl -k) if make failed
+      ansible.builtin.command: kubectl apply -k config/default
+      args: { chdir: "{{ workdir }}" }
+      register: kubectl_fallback_deploy
+      when: make_check.rc == 0 and make_deploy.rc != 0
+
+    - name: Display deployment method used
+      debug:
+        msg: |
+          Deployment method: {% if make_check.rc == 0 and make_deploy.rc == 0 %}make deploy{% elif make_check.rc != 0 %}kubectl apply -k (make not available){% else %}kubectl apply -k (make fallback){% endif %}
+
+    - name: Check if operator deployment succeeded
+      set_fact:
+        deployment_success: >-
+          {{
+            (make_check.rc == 0 and make_deploy.rc == 0) or
+            (make_check.rc != 0 and kubectl_deploy.rc == 0) or
+            (make_check.rc == 0 and kubectl_fallback_deploy.rc == 0)
+          }}
+
+    - name: Verify operator deployment succeeded
+      fail:
+        msg: "AWX operator deployment failed. Check kubectl and network connectivity."
+      when: not deployment_success
+
+    - name: Wait for AWX operator to be ready
+      ansible.builtin.command: kubectl get deployment awx-operator-controller-manager -n awx-operator-system
+      register: operator_check
+      retries: 10
+      delay: 10
+      until: operator_check.rc == 0
+      failed_when: false
+
+    - name: Create AWX namespace
+      ansible.builtin.command: kubectl create namespace {{ ns }}
+      register: ns_create
+      failed_when: false
+
+    - name: Create postgres data directory
+      ansible.builtin.file:
+        path: /opt/awx-postgres-data
+        state: directory
+        mode: '0755'
+      become: yes
+
+    - name: Apply StorageClass
+      ansible.builtin.command: kubectl apply -f ../storage-class.yml
+      args: { chdir: "{{ workdir }}" }
+      register: storage_class_result
+
+    - name: Apply PostgreSQL storage (PV/PVC)
+      ansible.builtin.command: kubectl apply -f ../postgres-storage.yml
+      args: { chdir: "{{ workdir }}" }
+      register: postgres_storage_result
+
+    - name: Apply PostgreSQL secret
+      ansible.builtin.command: kubectl apply -f ../postgres-secret.yml
+      args: { chdir: "{{ workdir }}" }
+      register: postgres_secret_result
+
+    - name: Apply PostgreSQL deployment
+      ansible.builtin.command: kubectl apply -f ../postgres.yml
+      args: { chdir: "{{ workdir }}" }
+      register: postgres_result
+
+    - name: Wait for PostgreSQL to be ready
+      ansible.builtin.command: kubectl wait --for=condition=available --timeout=300s deployment/awx-postgres -n {{ ns }}
+      register: postgres_wait
+      failed_when: false
 
     - name: Apply AWX CR
       ansible.builtin.command: kubectl apply -f ../awx.yml
       args: { chdir: "{{ workdir }}" }
+      register: awx_cr_result
+
+    - name: Display deployment results
+      debug:
+        msg:
+          - "PostgreSQL deployment: {{ postgres_result.stdout_lines }}"
+          - "AWX CR application: {{ awx_cr_result.stdout_lines }}"

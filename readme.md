@@ -6,7 +6,11 @@ This directory contains Ansible playbooks for deploying AWX (Ansible Web UI) on 
 
 - **`main.yml`** - Main orchestration playbook that installs requirements and triggers AWX deployment
 - **`deploy-awx.yml`** - Core deployment playbook that installs the AWX operator and AWX instance
-- **`awx.yml`** - AWX Custom Resource (CR) definition with NodePort configuration
+- **`awx.yml`** - AWX Custom Resource (CR) definition with NodePort and PostgreSQL configuration
+- **`postgres.yml`** - PostgreSQL deployment and service for AWX database
+- **`postgres-secret.yml`** - Database credentials and connection configuration
+- **`postgres-storage.yml`** - Persistent Volume and Persistent Volume Claim for database storage
+- **`storage-class.yml`** - Local storage class for persistent volumes
 - **`requirements.yml`** - Required Ansible collections for Kubernetes operations
 
 ## Prerequisites
@@ -16,8 +20,10 @@ Before running the AWX deployment, ensure you have:
 1. **Kubernetes Cluster** - A running K3s or Kubernetes cluster
 2. **kubectl Access** - kubectl configured to communicate with your cluster
 3. **Ansible** - Ansible installed with Python kubernetes library
-4. **Terraform State** - Terraform deployment completed (expects `../terraform/terraform.tfstate`)
+4. **Terraform State** - Terraform deployment completed (optional)
 5. **Internet Access** - For downloading AWX operator and container images
+
+**Note**: The `make` utility is optional. The playbook will automatically use `kubectl apply -k` if `make` is not available.
 
 ### Required Tools Installation
 
@@ -56,10 +62,12 @@ ansible-playbook main.yml
 The deployment process consists of several automated steps:
 
 1. **Collection Installation** - Installs `kubernetes.core` collection
-2. **Terraform State Check** - Waits for Terraform state file to ensure infrastructure is ready
-3. **AWX Operator Clone** - Downloads AWX operator version 2.19.1 from GitHub
-4. **Operator Deployment** - Deploys the AWX operator to the cluster using `make deploy` or `kubectl apply`
-5. **AWX Instance Creation** - Applies the AWX Custom Resource to create the AWX instance
+2. **AWX Operator Clone** - Downloads AWX operator version 2.19.1 from GitHub
+3. **Operator Deployment** - Deploys the AWX operator to the cluster using `make deploy` or `kubectl apply`
+4. **Storage Setup** - Creates StorageClass and PostgreSQL persistent storage
+5. **Database Deployment** - Deploys PostgreSQL with persistent storage and secrets
+6. **Database Readiness** - Waits for PostgreSQL to be available
+7. **AWX Instance Creation** - Applies the AWX Custom Resource configured to use PostgreSQL
 
 ### 3. Monitor Deployment Progress
 
@@ -130,12 +138,19 @@ kubectl get secret awx-admin-password -n awx -o jsonpath="{.data.password}" | ba
 
 ## Configuration Details
 
-### AWX Custom Resource Configuration
+### Configuration Details
 
-The `awx.yml` file configures:
+**AWX Custom Resource (`awx.yml`):**
 - **Service Type**: NodePort (for external access)
 - **NodePort**: 30081 (fixed port for consistent access)
+- **Database**: External PostgreSQL (managed locally)
 - **Namespace**: awx
+
+**PostgreSQL Configuration:**
+- **Database**: PostgreSQL 13
+- **Storage**: 8Gi persistent volume (local hostPath)
+- **Data Location**: `/opt/awx-postgres-data` on the host
+- **Credentials**: Stored in Kubernetes secret
 
 ### Customization Options
 
@@ -151,8 +166,9 @@ You can modify the deployment by editing `deploy-awx.yml`:
 
 1. **Terraform State Not Found**
    ```bash
-   # Ensure Terraform has completed
+   # Check if Terraform state exists (optional step)
    ls -la ../terraform/terraform.tfstate
+   # Note: This step is now optional and will be ignored if file doesn't exist
    ```
 
 2. **kubectl Not Configured**
@@ -163,7 +179,13 @@ You can modify the deployment by editing `deploy-awx.yml`:
    kubectl config view
    ```
 
-3. **AWX Operator Deployment Failed**
+3. **Make Not Available (Automatic Fallback)**
+   ```bash
+   # The playbook automatically detects when make is unavailable
+   # and uses kubectl apply -k instead. No action needed.
+   ```
+
+4. **AWX Operator Deployment Failed**
    ```bash
    # Check operator logs
    kubectl logs -n awx-operator-system deployment/awx-operator-controller-manager
@@ -173,14 +195,14 @@ You can modify the deployment by editing `deploy-awx.yml`:
    kubectl apply -k config/default
    ```
 
-4. **AWX Pods Not Starting**
+5. **AWX Pods Not Starting**
    ```bash
    # Check pod status and events
    kubectl describe pods -n awx
    kubectl get events -n awx --sort-by='.lastTimestamp'
    ```
 
-5. **NodePort Not Accessible**
+6. **NodePort Not Accessible**
    ```bash
    # Check service status
    kubectl get svc -n awx

@@ -7,3 +7,4 @@ metadata:
 spec:
   service_type: NodePort
   nodeport_port: 30081
+  postgres_configuration_secret: awx-postgres-configuration
