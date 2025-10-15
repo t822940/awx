@@ -80,6 +80,17 @@
         group: 70
       become: yes
 
+    - name: Check if PV exists and is released
+      ansible.builtin.command: kubectl get pv awx-postgres-pv -o jsonpath='{.status.phase}'
+      register: pv_status
+      failed_when: false
+      changed_when: false
+
+    - name: Reset released PV to make it available (preserves data)
+      ansible.builtin.command: kubectl patch pv awx-postgres-pv -p '{"spec":{"claimRef":null}}'
+      when: pv_status.rc == 0 and pv_status.stdout == "Released"
+      failed_when: false
+
     - name: Apply StorageClass
       ansible.builtin.command: kubectl apply -f ../storage-class.yml
       args: { chdir: "{{ workdir }}" }
