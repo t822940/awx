@@ -12,6 +12,12 @@ spec:
   storageClassName: local-storage
   hostPath:
     path: /opt/awx-postgres-data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: Exists
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
