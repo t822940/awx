@@ -71,36 +71,27 @@
       register: operator_wait
       failed_when: false
 
-    - name: Create postgres data directory with correct permissions
+    - name: Clean PostgreSQL data directory
+      ansible.builtin.command: rm -rf /opt/awx-postgres-data/*
+      become: yes
+      failed_when: false
+
+    - name: Create postgres data directory with full permissions
       ansible.builtin.file:
         path: /opt/awx-postgres-data
         state: directory
-        mode: '0755'
-        owner: 70
-        group: 70
-        recurse: yes
-      become: yes
-
-    - name: Create data subdirectory for PostgreSQL
-      ansible.builtin.file:
-        path: /opt/awx-postgres-data/data
-        state: directory
-        mode: '0755'
+        mode: '0777'
         owner: 70
         group: 70
       become: yes
 
-    - name: Create userdata subdirectory for PostgreSQL
-      ansible.builtin.file:
-        path: /opt/awx-postgres-data/data/userdata
-        state: directory
-        mode: '0700'
-        owner: 70
-        group: 70
-      become: yes
-
-    - name: Set SELinux context for PostgreSQL data (if SELinux is enabled)
+    - name: Set SELinux context for PostgreSQL data
       ansible.builtin.command: chcon -R -t container_file_t /opt/awx-postgres-data
+      become: yes
+      failed_when: false
+
+    - name: Enable container management SELinux boolean
+      ansible.builtin.command: setsebool -P container_manage_cgroup on
       become: yes
       failed_when: false
 
