@@ -134,11 +134,6 @@
       debug:
         msg: "PostgreSQL services: {{ postgres_svc_check.stdout_lines }}"
 
-    - name: Apply PostgreSQL configuration secret
-      ansible.builtin.command: kubectl apply -f ../postgres-secret.yml
-      args: { chdir: "{{ workdir }}" }
-      register: postgres_secret_result
-
     - name: Apply AWX CR
       ansible.builtin.command: kubectl apply -f ../awx.yml
       args: { chdir: "{{ workdir }}" }
@@ -154,6 +149,5 @@
         msg:
           - "Storage setup: {{ storage_class_result.stdout_lines }}"
           - "PostgreSQL storage: {{ postgres_storage_result.stdout_lines }}"
-          - "PostgreSQL secret: {{ postgres_secret_result.stdout_lines }}"
           - "AWX CR application: {{ awx_cr_result.stdout_lines }}"
           - "AWX deployment status: {{ 'Ready' if awx_wait.rc == 0 else 'Still deploying - check kubectl get awx -n awx' }}"
