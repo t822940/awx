@@ -106,13 +106,22 @@
       when: pv_status.rc == 0 and pv_status.stdout == "Released"
       failed_when: false
 
+    - name: Copy AWX configuration files to operator directory
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ workdir }}/{{ item | basename }}"
+      loop:
+        - "../storage-class.yml"
+        - "../postgres-storage.yml"
+        - "../awx.yml"
+
     - name: Apply StorageClass
-      ansible.builtin.command: kubectl apply -f ../storage-class.yml
+      ansible.builtin.command: kubectl apply -f storage-class.yml
       args: { chdir: "{{ workdir }}" }
       register: storage_class_result
 
     - name: Apply PostgreSQL storage (PV/PVC)
-      ansible.builtin.command: kubectl apply -f ../postgres-storage.yml
+      ansible.builtin.command: kubectl apply -f postgres-storage.yml
       args: { chdir: "{{ workdir }}" }
       register: postgres_storage_result
 
@@ -126,7 +135,7 @@
         msg: "PostgreSQL services: {{ postgres_svc_check.stdout_lines }}"
 
     - name: Apply AWX CR
-      ansible.builtin.command: kubectl apply -f ../awx.yml
+      ansible.builtin.command: kubectl apply -f awx.yml
       args: { chdir: "{{ workdir }}" }
       register: awx_cr_result
 
