@@ -6,10 +6,10 @@ metadata:
   namespace: awx
 type: Opaque
 stringData:
-  host: host.k3s.internal
+  host: host.docker.internal
   port: "5432"
   database: awx
-  username: awx
-  password: awx-postgres-pass
-  type: unmanaged
+  username: postgres
+  password: postgres
   sslmode: disable
+  type: unmanaged

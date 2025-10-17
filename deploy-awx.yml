@@ -21,10 +21,17 @@
         - "kubectl delete deployment awx-web -n {{ ns }}"
         - "kubectl delete deployment awx-task -n {{ ns }}"
         - "kubectl delete statefulset awx-postgres-15 -n {{ ns }}"
+        - "kubectl delete pv awx-postgres-pv"
+        - "kubectl delete secret awx-admin-password -n {{ ns }}"
+        - "kubectl delete secret awx-app-credentials -n {{ ns }}"
+        - "kubectl delete secret awx-broadcast-websocket -n {{ ns }}"
+        - "kubectl delete secret awx-receptor-ca -n {{ ns }}"
+        - "kubectl delete secret awx-receptor-work-signing -n {{ ns }}"
+        - "kubectl delete secret awx-secret-key -n {{ ns }}"
 
     - name: Wait for complete AWX cleanup
       ansible.builtin.pause:
-        seconds: 10
+        seconds: 15
 
     - name: Create AWX namespace
       ansible.builtin.command: kubectl create namespace {{ ns }}
@@ -110,6 +117,14 @@
       become: yes
       failed_when: false
 
+    - name: Create AWX database (required for external PostgreSQL)
+      ansible.builtin.shell: |
+        sudo -u postgres psql -c "DROP DATABASE IF EXISTS awx;"
+        sudo -u postgres psql -c "CREATE DATABASE awx;"
+        sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+      become: yes
+      failed_when: false
+
     - name: Set SELinux context for PostgreSQL data
       ansible.builtin.command: chcon -R -t container_file_t /opt/awx-postgres-data
       become: yes
@@ -191,12 +206,12 @@
       failed_when: false
 
     - name: Test local PostgreSQL connectivity
-      ansible.builtin.command: pg_isready -h localhost -p 5432 -U awx -d awx
+      ansible.builtin.command: pg_isready -h localhost -p 5432 -U postgres
       register: local_db_connectivity
       failed_when: false
 
     - name: Verify database connectivity from AWX pod
-      ansible.builtin.command: kubectl exec -n {{ ns }} deployment/awx-web -- pg_isready -h host.k3s.internal -p 5432
+      ansible.builtin.command: kubectl exec -n {{ ns }} deployment/awx-web -- pg_isready -h host.docker.internal -p 5432
       register: db_connectivity
       failed_when: false
       when: awx_wait.rc == 0
