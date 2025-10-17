@@ -6,9 +6,10 @@ metadata:
   namespace: awx
 type: Opaque
 stringData:
-  host: awx-postgres-15.awx.svc.cluster.local
+  host: host.k3s.internal
   port: "5432"
   database: awx
   username: awx
   password: awx-postgres-pass
-  type: managed
+  type: unmanaged
+  sslmode: disable

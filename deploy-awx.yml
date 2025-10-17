@@ -18,6 +18,13 @@
         - "kubectl delete awx awx -n {{ ns }}"
         - "kubectl delete secret awx-postgres-configuration -n {{ ns }}"
         - "kubectl delete pvc postgres-15-awx-postgres-15-0 -n {{ ns }}"
+        - "kubectl delete deployment awx-web -n {{ ns }}"
+        - "kubectl delete deployment awx-task -n {{ ns }}"
+        - "kubectl delete statefulset awx-postgres-15 -n {{ ns }}"
+
+    - name: Wait for complete AWX cleanup
+      ansible.builtin.pause:
+        seconds: 10
 
     - name: Create AWX namespace
       ansible.builtin.command: kubectl create namespace {{ ns }}
@@ -86,7 +93,7 @@
       become: yes
       failed_when: false
 
-    - name: Create postgres data directory with full permissions
+    - name: Create postgres data directory (for compatibility)
       ansible.builtin.file:
         path: /opt/awx-postgres-data
         state: directory
@@ -94,6 +101,14 @@
         owner: 70
         group: 70
       become: yes
+
+    - name: Ensure PostgreSQL is running on localhost
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: yes
+      become: yes
+      failed_when: false
 
     - name: Set SELinux context for PostgreSQL data
       ansible.builtin.command: chcon -R -t container_file_t /opt/awx-postgres-data
@@ -121,20 +136,8 @@
         src: "{{ item }}"
         dest: "{{ workdir }}/{{ item }}"
       loop:
-        - "storage-class.yml"
-        - "postgres-storage.yml"
         - "postgres-config.yml"
         - "awx.yml"
-
-    - name: Apply StorageClass
-      ansible.builtin.command: kubectl apply -f storage-class.yml
-      args: { chdir: "{{ workdir }}" }
-      register: storage_class_result
-
-    - name: Apply PostgreSQL storage (PV/PVC)
-      ansible.builtin.command: kubectl apply -f postgres-storage.yml
-      args: { chdir: "{{ workdir }}" }
-      register: postgres_storage_result
 
     - name: Apply PostgreSQL configuration secret
       ansible.builtin.command: kubectl apply -f postgres-config.yml
@@ -147,6 +150,11 @@
       until: secret_check.rc == 0
       retries: 30
       delay: 2
+
+    - name: Delete any existing AWX-generated postgres configuration
+      ansible.builtin.command: kubectl delete secret -n {{ ns }} -l app.kubernetes.io/name=postgres-15
+      register: delete_auto_config
+      failed_when: false
 
     - name: Check if PostgreSQL service exists
       ansible.builtin.command: kubectl get svc -n awx
@@ -162,24 +170,33 @@
       args: { chdir: "{{ workdir }}" }
       register: awx_cr_result
 
+    - name: Wait for AWX operator to process the configuration
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Verify AWX is using correct PostgreSQL configuration
+      ansible.builtin.command: kubectl get awx awx -n {{ ns }} -o jsonpath='{.spec.postgres_configuration_secret}'
+      register: awx_config_check
+      failed_when: awx_config_check.stdout != "awx-postgres-configuration"
+
     - name: Wait for AWX deployment to be ready
       ansible.builtin.command: kubectl wait --for=condition=Ready --timeout=600s awx/awx -n {{ ns }}
       register: awx_wait
       failed_when: false
 
     # Post-deployment verification
-    - name: Check PostgreSQL pod status
-      ansible.builtin.command: kubectl get pods -n {{ ns }} -l app.kubernetes.io/name=postgres
-      register: postgres_pods
-      failed_when: false
-
     - name: Check AWX pods status
       ansible.builtin.command: kubectl get pods -n {{ ns }} -l app.kubernetes.io/managed-by=awx-operator
       register: awx_pods
       failed_when: false
 
-    - name: Verify database connectivity
-      ansible.builtin.command: kubectl exec -n {{ ns }} deployment/awx-web -- pg_isready -h awx-postgres-15.awx.svc.cluster.local -p 5432
+    - name: Test local PostgreSQL connectivity
+      ansible.builtin.command: pg_isready -h localhost -p 5432 -U awx -d awx
+      register: local_db_connectivity
+      failed_when: false
+
+    - name: Verify database connectivity from AWX pod
+      ansible.builtin.command: kubectl exec -n {{ ns }} deployment/awx-web -- pg_isready -h host.k3s.internal -p 5432
       register: db_connectivity
       failed_when: false
       when: awx_wait.rc == 0
@@ -187,12 +204,9 @@
     - name: Display deployment results
       debug:
         msg:
-          - "Storage setup: {{ storage_class_result.stdout_lines }}"
-          - "PostgreSQL storage: {{ postgres_storage_result.stdout_lines }}"
           - "PostgreSQL config: {{ postgres_config_result.stdout_lines }}"
           - "AWX CR application: {{ awx_cr_result.stdout_lines }}"
           - "AWX deployment status: {{ 'Ready' if awx_wait.rc == 0 else 'Still deploying - check kubectl get awx -n awx' }}"
-          - "PostgreSQL pods: {{ postgres_pods.stdout_lines | default(['Not checked']) }}"
           - "AWX pods: {{ awx_pods.stdout_lines | default(['Not checked']) }}"
           - "Database connectivity: {{ 'OK' if db_connectivity.rc == 0 else 'Check manually' }}"
 
@@ -213,3 +227,5 @@
           - "Access URL: http://<node-ip>:30081"
           - "Username: admin"
           - "Password: {{ admin_password | default('Check manually with: kubectl get secret awx-admin-password -n awx -o jsonpath=\"{.data.password}\" | base64 --decode') }}"
+          - "Database: AWX operator will create database automatically on external PostgreSQL"
+          - "Local DB connectivity: {{ 'OK' if local_db_connectivity.rc == 0 else 'Check PostgreSQL service' }}"
