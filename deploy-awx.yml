@@ -108,7 +108,7 @@
 
     - name: Copy AWX configuration files to operator directory
       ansible.builtin.copy:
-        src: "awx/{{ item }}"
+        src: "{{ item }}"
         dest: "{{ workdir }}/{{ item }}"
       loop:
         - "storage-class.yml"
