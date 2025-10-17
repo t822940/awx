@@ -9,6 +9,16 @@
     ns: "awx"
 
   tasks:
+    # Cleanup existing resources for fresh deployment
+    - name: Delete existing AWX resources
+      ansible.builtin.command: "{{ item }}"
+      register: cleanup_result
+      failed_when: false
+      loop:
+        - "kubectl delete awx awx -n {{ ns }}"
+        - "kubectl delete secret awx-postgres-configuration -n {{ ns }}"
+        - "kubectl delete pvc postgres-15-awx-postgres-15-0 -n {{ ns }}"
+
     - name: Create AWX namespace
       ansible.builtin.command: kubectl create namespace {{ ns }}
       register: ns_create
@@ -113,6 +123,7 @@
       loop:
         - "storage-class.yml"
         - "postgres-storage.yml"
+        - "postgres-config.yml"
         - "awx.yml"
 
     - name: Apply StorageClass
@@ -124,6 +135,18 @@
       ansible.builtin.command: kubectl apply -f postgres-storage.yml
       args: { chdir: "{{ workdir }}" }
       register: postgres_storage_result
+
+    - name: Apply PostgreSQL configuration secret
+      ansible.builtin.command: kubectl apply -f postgres-config.yml
+      args: { chdir: "{{ workdir }}" }
+      register: postgres_config_result
+
+    - name: Wait for PostgreSQL configuration secret to be available
+      ansible.builtin.command: kubectl get secret awx-postgres-configuration -n {{ ns }}
+      register: secret_check
+      until: secret_check.rc == 0
+      retries: 30
+      delay: 2
 
     - name: Check if PostgreSQL service exists
       ansible.builtin.command: kubectl get svc -n awx
@@ -144,10 +167,49 @@
       register: awx_wait
       failed_when: false
 
+    # Post-deployment verification
+    - name: Check PostgreSQL pod status
+      ansible.builtin.command: kubectl get pods -n {{ ns }} -l app.kubernetes.io/name=postgres
+      register: postgres_pods
+      failed_when: false
+
+    - name: Check AWX pods status
+      ansible.builtin.command: kubectl get pods -n {{ ns }} -l app.kubernetes.io/managed-by=awx-operator
+      register: awx_pods
+      failed_when: false
+
+    - name: Verify database connectivity
+      ansible.builtin.command: kubectl exec -n {{ ns }} deployment/awx-web -- pg_isready -h awx-postgres-15.awx.svc.cluster.local -p 5432
+      register: db_connectivity
+      failed_when: false
+      when: awx_wait.rc == 0
+
     - name: Display deployment results
       debug:
         msg:
           - "Storage setup: {{ storage_class_result.stdout_lines }}"
           - "PostgreSQL storage: {{ postgres_storage_result.stdout_lines }}"
+          - "PostgreSQL config: {{ postgres_config_result.stdout_lines }}"
           - "AWX CR application: {{ awx_cr_result.stdout_lines }}"
           - "AWX deployment status: {{ 'Ready' if awx_wait.rc == 0 else 'Still deploying - check kubectl get awx -n awx' }}"
+          - "PostgreSQL pods: {{ postgres_pods.stdout_lines | default(['Not checked']) }}"
+          - "AWX pods: {{ awx_pods.stdout_lines | default(['Not checked']) }}"
+          - "Database connectivity: {{ 'OK' if db_connectivity.rc == 0 else 'Check manually' }}"
+
+    - name: Get AWX admin password
+      ansible.builtin.command: kubectl get secret awx-admin-password -n {{ ns }} -o jsonpath='{.data.password}'
+      register: admin_password_b64
+      failed_when: false
+
+    - name: Decode admin password
+      set_fact:
+        admin_password: "{{ admin_password_b64.stdout | b64decode }}"
+      when: admin_password_b64.rc == 0
+
+    - name: Display access information
+      debug:
+        msg:
+          - "AWX deployment complete!"
+          - "Access URL: http://<node-ip>:30081"
+          - "Username: admin"
+          - "Password: {{ admin_password | default('Check manually with: kubectl get secret awx-admin-password -n awx -o jsonpath=\"{.data.password}\" | base64 --decode') }}"

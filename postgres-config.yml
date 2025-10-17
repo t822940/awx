@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: awx-postgres-configuration
+  namespace: awx
+type: Opaque
+stringData:
+  host: awx-postgres-15.awx.svc.cluster.local
+  port: "5432"
+  database: awx
+  username: awx
+  password: awx-postgres-pass
+  type: managed

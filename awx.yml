@@ -11,3 +11,4 @@ spec:
   postgres_storage_requirements:
     requests:
       storage: 8Gi
+  postgres_configuration_secret: awx-postgres-configuration
