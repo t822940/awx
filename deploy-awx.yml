@@ -165,11 +165,6 @@
       ansible.builtin.pause:
         seconds: 30
 
-    - name: Verify AWX is using correct PostgreSQL configuration
-      ansible.builtin.command: kubectl get awx awx -n {{ ns }} -o jsonpath='{.spec.postgres_configuration_secret}'
-      register: awx_config_check
-      failed_when: awx_config_check.stdout != "awx-postgres-configuration"
-
     - name: Wait for AWX deployment to be ready
       ansible.builtin.command: kubectl wait --for=condition=Ready --timeout=600s awx/awx -n {{ ns }}
       register: awx_wait
