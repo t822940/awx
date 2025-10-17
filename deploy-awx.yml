@@ -108,12 +108,12 @@
 
     - name: Copy AWX configuration files to operator directory
       ansible.builtin.copy:
-        src: "{{ item }}"
-        dest: "{{ workdir }}/{{ item | basename }}"
+        src: "awx/{{ item }}"
+        dest: "{{ workdir }}/{{ item }}"
       loop:
-        - "../storage-class.yml"
-        - "../postgres-storage.yml"
-        - "../awx.yml"
+        - "storage-class.yml"
+        - "postgres-storage.yml"
+        - "awx.yml"
 
     - name: Apply StorageClass
       ansible.builtin.command: kubectl apply -f storage-class.yml
